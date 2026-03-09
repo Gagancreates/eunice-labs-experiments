@@ -3,3 +3,6 @@ venv/
 ENV/
 __pycache__/
 *.py[cod]
+.ENV
+.env/
+day3_recap.md
