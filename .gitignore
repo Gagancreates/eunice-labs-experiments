@@ -6,3 +6,6 @@ __pycache__/
 .ENV
 .env/
 day3_recap.md
+aria_train.jsonl
+aria_lora_1.5b.zip
+whatwedid.md
