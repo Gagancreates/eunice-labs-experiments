@@ -8,7 +8,11 @@ __pycache__/
 day3_recap.md
 aria_train.jsonl
 aria_lora_1.5b.zip
-whatwedid.md
+whatwedd.md
 final_training_dataset.json
 parsed_6000.json
 compression_progress.json
+easy_medium.jsonl
+hard_with_replay.jsonl
+prepare_dataset.py
+tasks.md
