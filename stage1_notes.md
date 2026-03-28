@@ -57,7 +57,44 @@ Acceptable for a one-time paper eval but not for production.
 
 ---
 
-## Eval (in progress)
-- Running 30 easy + 30 medium samples through ARIA
-- Measuring mean `<think>` token length per difficulty bucket
-- Results → eval_results.json
+## Eval Results
+
+### Run 1 (max_new_tokens=512) — 30 samples each
+| Bucket | Mean think tokens | Samples with think |
+|--------|------------------|--------------------|
+| Easy | 288.7 | 21/30 (70%) |
+| Medium | 108.3 | 6/30 (20%) |
+
+Low `samples_with_think` on medium was due to 512 token limit truncating mid-think — regex found no closing `</think>` tag.
+
+### Run 2 (max_new_tokens=2048) — 10 samples each
+| Bucket | Mean think tokens | Max | Samples with think |
+|--------|------------------|-----|-------------------|
+| Easy | 645.0 | 1,532 | 9/10 (90%) |
+| Medium | 656.8 | 1,643 | 6/10 (60%) |
+
+### Comparison vs base model
+| | Think tokens (easy) |
+|--|--|
+| Base DeepSeek-R1-Distill-Qwen-7B | ~1,200+ |
+| ARIA Stage 1 | ~717 (per sample with think) |
+| Training target (compressed) | ~200 |
+
+**ARIA thinks ~40% less than base model.** Not as concise as training target but direction is correct.
+
+### Key findings
+
+**1. Missing opening `<think>` tag**
+Model sometimes generates thinking content + `</think>` but skips the opening `<think>` tag. Regex misses these. Actual thinking rate is higher than `samples_with_think` suggests. Fix: update regex to also capture `content</think>` pattern.
+
+**2. Double BOS token in eval prompts**
+Tokenizer auto-adds BOS on top of manually included BOS in prompt string. Minor issue — doesn't affect output quality.
+
+**3. Thinking is genuinely concise when tags are present**
+Qualitative check on "What is 2+2?" showed 3-sentence think trace. Correct answer. Format almost right.
+
+### Next steps
+- [ ] Fix eval regex to capture missing-opening-tag cases
+- [ ] Run accuracy check (are answers correct?)
+- [ ] Eval on held-out unseen problems (not training data)
+- [ ] Compare base model on same problems side by side
