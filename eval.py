@@ -26,7 +26,7 @@ for label, samples in [("easy", easy), ("medium", medium)]:
         t0 = time.time()
         prompt = s["text"].split("<|Assistant|>")[0] + "<|Assistant|>"
         inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-        out = model.generate(**inputs, max_new_tokens=1024, use_cache=False)
+        out = model.generate(**inputs, max_new_tokens=512, use_cache=True)
         decoded = tokenizer.decode(out[0], skip_special_tokens=False)
         think = re.findall(r"<think>(.*?)</think>", decoded, re.DOTALL)
         think_lens.append(len(tokenizer.encode(think[0])) if think else 0)
