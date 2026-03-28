@@ -47,6 +47,22 @@ def count_think_tokens(text, tokenizer):
 
 
 # ── Answer extraction ──────────────────────────────────────────────────────────
+def extract_boxed(text):
+    idx = text.rfind("\\boxed{")
+    if idx == -1:
+        return None
+    depth = 0
+    start = idx + len("\\boxed{")
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            if depth == 0:
+                return text[start:i].strip()
+            depth -= 1
+    return None
+
+
 def extract_answer(text):
     if "<|Assistant|>" in text:
         text = text.split("<|Assistant|>")[-1]
@@ -56,10 +72,10 @@ def extract_answer(text):
     last_close = text.rfind("</think>")
     if last_close != -1:
         text = text[last_close + len("</think>"):]
-    # Boxed answer
-    m = re.search(r"boxed\{([^}]+)\}", text)
-    if m:
-        return m.group(1).strip()
+    # Boxed answer (balanced brace matcher handles nested braces e.g. \frac{1}{2})
+    boxed = extract_boxed(text)
+    if boxed:
+        return boxed
     # "the answer is X"
     m = re.search(r"answer\s+is\s+\$?([0-9][\d\s,\.]*)", text, re.IGNORECASE)
     if m:
