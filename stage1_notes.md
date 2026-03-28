@@ -93,8 +93,71 @@ Tokenizer auto-adds BOS on top of manually included BOS in prompt string. Minor 
 **3. Thinking is genuinely concise when tags are present**
 Qualitative check on "What is 2+2?" showed 3-sentence think trace. Correct answer. Format almost right.
 
-### Next steps
-- [ ] Fix eval regex to capture missing-opening-tag cases
-- [ ] Run accuracy check (are answers correct?)
-- [ ] Eval on held-out unseen problems (not training data)
-- [ ] Compare base model on same problems side by side
+---
+
+## Consultation — AI Engineer Review (2026-03-28)
+
+### Benchmarks
+- Held-out OpenThoughts eval is in-distribution — reviewers will dismiss it
+- **Must use:** GSM8K (1,319 problems) + MATH-500 (500 problems, per-level breakdown)
+- ARC-Challenge optional for out-of-domain transfer
+- Use **lm-evaluation-harness** (EleutherAI) — don't roll custom accuracy extraction
+- Merge LoRA adapter before running lm-eval: `model.merge_and_unload()`
+
+### Publishability threshold (GSM8K)
+| Accuracy | Verdict |
+|----------|---------|
+| >84% | Solid paper, clear win |
+| 80-84% | Publishable if token reduction is 3x+, frame as tradeoff study |
+| <80% | Something broke in training, needs another run |
+
+- Base DeepSeek-R1-Distill-Qwen-7B: ~86-89% on GSM8K
+- **Real story isn't average reduction — it's adaptive behavior:** big reduction on easy, near-zero on hard. That's the finding.
+
+### Venue
+- arXiv preprint first, always
+- If results strong → NeurIPS 2025 efficient ML / reasoning workshop
+- Ship fast, iterate
+
+---
+
+## Bugs Found in Stage 1
+
+### 1. Double BOS token (confirmed)
+`tokenizer.add_bos_token = True` and `bos_token_id = 151646`.
+Encoding "test" returns `[151646, 1944]` — tokenizer auto-adds BOS.
+Our `prepare_dataset.py` also manually prepended BOS → every training example had **double BOS**.
+Not catastrophic (loss still converged) but corrupted format for every example. Likely contributed to weaker compression.
+
+### 2. LoRA targets too narrow
+Only targeted attention: `q_proj, v_proj, k_proj, o_proj`.
+Compression is a **generation behavior** — needs MLP layers too.
+Missing: `gate_proj, up_proj, down_proj`.
+
+### 3. LoRA rank too small
+r=16 → insufficient capacity to learn a new reasoning style on top of existing weights.
+
+---
+
+## Stage 2 Training Plan (next run)
+
+### Changes from Stage 1
+| Setting | Stage 1 | Stage 2 |
+|---------|---------|---------|
+| Manual BOS in dataset | Yes (bug) | **No — removed** |
+| LoRA rank | 16 | **64** |
+| LoRA target modules | q/k/v/o (4) | **q/k/v/o + gate/up/down (7)** |
+| lora_alpha | 32 | **128** (2x rank) |
+| Eval benchmark | Training data (wrong) | **GSM8K + MATH-500** |
+| max_new_tokens in eval | 512 (truncating) | **8192** |
+| Inference method | transformers+PEFT | **merge adapter → lm-eval-harness** |
+
+### Action items in order
+1. Fix `prepare_dataset.py` — remove manual BOS
+2. Regenerate `easy_medium.jsonl` + `hard_with_replay.jsonl`
+3. Re-push both datasets to HF
+4. Update `train.py` — r=64, alpha=128, all 7 target modules
+5. Retrain on Vast.ai RTX 3090
+6. Merge adapter: `model.merge_and_unload()` → push merged to HF
+7. Run GSM8K + MATH-500 via lm-eval-harness
+8. Report: accuracy + mean think tokens per difficulty level
