@@ -1,4 +1,5 @@
-# train.py — ARIA Stage 1 SFT
+# train.py — ARIA Stage 2 SFT
+# Fixes from Stage 1: no manual BOS, r=64, all 7 LoRA target modules
 # Run: python train.py
 
 from datasets import load_dataset
@@ -17,9 +18,10 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 
 model = FastLanguageModel.get_peft_model(
     model,
-    r=16,
-    target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-    lora_alpha=32,
+    r=64,
+    target_modules=["q_proj", "v_proj", "k_proj", "o_proj",
+                    "gate_proj", "up_proj", "down_proj"],
+    lora_alpha=128,
     lora_dropout=0.05,
     use_gradient_checkpointing="unsloth",
 )
@@ -51,13 +53,13 @@ trainer = SFTTrainer(
         save_steps=100,
         save_total_limit=3,              # keep only last 3 checkpoints on disk
         report_to="wandb",
-        run_name="aria-stage1",
+        run_name="aria-stage2",
         push_to_hub=True,
-        hub_model_id="Eunice-Labs/aria-stage1",
+        hub_model_id="Eunice-Labs/aria-stage2",
         hub_strategy="checkpoint",       # pushes to HF every save_steps
     ),
 )
 
 trainer.train()
 trainer.push_to_hub()
-print("Done. Model at Eunice-Labs/aria-stage1")
+print("Done. Model at Eunice-Labs/aria-stage2")
