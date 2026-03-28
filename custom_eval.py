@@ -20,7 +20,7 @@ SYSTEM_PROMPT = (
     "then provide a clean final answer."
 )
 
-MAX_NEW_TOKENS = 4096
+MAX_NEW_TOKENS = 8192
 DEVICE = "cuda"
 
 # ── Token counting ─────────────────────────────────────────────────────────────
@@ -258,3 +258,36 @@ for lvl in sorted(base_lvl.keys()):
           f"{b['mean_think_tokens']:>13} {a.get('mean_think_tokens','—'):>13} {str(reduction)+'x':>10}")
 
 print("\nSaved to eval_results_final.json and eval_results_full.json")
+
+# ── Bad label detection ────────────────────────────────────────────────────────
+# Flag cases where both models predict the same answer but are marked wrong.
+# These are likely incorrect gold labels in the dataset.
+print("\n" + "="*60)
+print("POTENTIAL BAD LABELS (both models agree, both marked wrong)")
+print("="*60)
+for bench in ["gsm8k", "math500"]:
+    base_res = all_results["base"][bench]["results"]
+    aria_res = all_results["aria"][bench]["results"]
+    bad = []
+    for b, a in zip(base_res, aria_res):
+        if not b["correct"] and not a["correct"] and b["pred"] is not None and a["pred"] is not None:
+            if normalize(b["pred"]) == normalize(a["pred"]):
+                bad.append({
+                    "bench": bench,
+                    "problem": b["problem"],
+                    "gold": b["gold"],
+                    "both_predicted": b["pred"],
+                    "level": b.get("level"),
+                })
+    if bad:
+        print(f"\n{bench.upper()} — {len(bad)} suspect label(s):")
+        for x in bad:
+            lvl = f" (L{x['level']})" if x.get("level") else ""
+            print(f"  [{bench}{lvl}] gold={x['gold']} | both predicted={x['both_predicted']}")
+            print(f"    problem: {x['problem'][:80]}...")
+    else:
+        print(f"\n{bench.upper()} — no suspect labels found")
+
+with open("bad_labels.json", "w") as f:
+    json.dump(bad, f, indent=2)
+print("\nSuspect labels saved to bad_labels.json")
