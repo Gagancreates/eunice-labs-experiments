@@ -11,6 +11,22 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 from tqdm import tqdm
 from math_verify import verify, parse as math_parse
+from huggingface_hub import HfApi
+
+HF_REPO = "Eunice-Labs/aria-eval-results"
+hf_api = HfApi()
+
+def push_file_to_hub(filepath):
+    try:
+        hf_api.upload_file(
+            path_or_fileobj=filepath,
+            path_in_repo=filepath,
+            repo_id=HF_REPO,
+            repo_type="dataset",
+        )
+        print(f"  Pushed {filepath} to {HF_REPO}")
+    except Exception as e:
+        print(f"  Warning: failed to push {filepath}: {e}")
 
 SYSTEM_PROMPT = (
     "You are a math reasoning assistant. "
@@ -259,16 +275,19 @@ for model_name, model_path in [
         "math500": {"results": math_results, "summary": math_summary},
     }
 
-    # Save full per-model results (raw outputs included)
+    # Save + push full per-model results after each phase
     if gsm_results:
         fname = f"eval_{model_name}_gsm8k.json"
         with open(fname, "w") as f:
             json.dump(gsm_results, f, indent=2)
         print(f"  Saved {fname}")
+        push_file_to_hub(fname)
+
     fname = f"eval_{model_name}_math500.json"
     with open(fname, "w") as f:
         json.dump(math_results, f, indent=2)
     print(f"  Saved {fname}")
+    push_file_to_hub(fname)
 
     del model
     torch.cuda.empty_cache()
@@ -283,6 +302,7 @@ for model_name, data in all_results.items():
     }
 with open("eval_results_final.json", "w") as f:
     json.dump(compact, f, indent=2)
+push_file_to_hub("eval_results_final.json")
 
 
 # ── Print main results table ───────────────────────────────────────────────────
