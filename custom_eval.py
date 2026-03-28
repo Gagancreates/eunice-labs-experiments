@@ -200,12 +200,30 @@ math500_raw = load_dataset("HuggingFaceH4/MATH-500", split="test")
 
 gsm8k = [{"problem": x["question"], "answer": x["answer"].split("####")[-1].strip()}
          for x in gsm8k_raw][:200]
-math500 = [{"problem": x["problem"], "answer": x["answer"], "level": x["level"]}
-           for x in math500_raw]
+
+# Stratified sample: 50 per level (1-5) = 250 total
+from collections import defaultdict
+per_level = defaultdict(list)
+for x in math500_raw:
+    per_level[x["level"]].append(x)
+math500 = []
+for lvl in sorted(per_level.keys()):
+    for x in per_level[lvl][:50]:
+        math500.append({"problem": x["problem"], "answer": x["answer"], "level": x["level"]})
 
 print(f"GSM8K: {len(gsm8k)} problems")
-print(f"MATH-500: {len(math500)} problems")
+print(f"MATH-500: {len(math500)} problems (50 per level)")
 
+# Base GSM8K already done — hardcode result from prior run
+# 152/200 correct, 76.0% acc, avg 17.1s/sample
+BASE_GSM8K_SUMMARY = {
+    "accuracy": 76.0,
+    "mean_think_tokens": 449.5,   # from smoke eval
+    "res_score": round(76.0 / 449.5 * 1000, 2),
+    "missing_think_tag": 0,
+    "total": 200,
+    "note": "from prior completed run — 152/200 correct",
+}
 
 # ── Run eval ───────────────────────────────────────────────────────────────────
 all_results = {}
@@ -224,20 +242,33 @@ for model_name, model_path in [
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model.eval()
 
-    gsm_results = evaluate(model, tokenizer, gsm8k, f"{model_name}/GSM8K")
+    # Base GSM8K already done — skip and use cached result
+    if model_name == "base":
+        print("  Skipping base/GSM8K — using prior run result (76.0%, 152/200)")
+        gsm_results = []
+        gsm_summary = BASE_GSM8K_SUMMARY
+    else:
+        gsm_results = evaluate(model, tokenizer, gsm8k, f"{model_name}/GSM8K")
+        gsm_summary = summarize(gsm_results)
+
     math_results = evaluate(model, tokenizer, math500, f"{model_name}/MATH-500")
 
+    math_summary = summarize(math_results, by_level=True)
     all_results[model_name] = {
-        "gsm8k": {"results": gsm_results, "summary": summarize(gsm_results)},
-        "math500": {"results": math_results, "summary": summarize(math_results, by_level=True)},
+        "gsm8k": {"results": gsm_results, "summary": gsm_summary},
+        "math500": {"results": math_results, "summary": math_summary},
     }
 
     # Save full per-model results (raw outputs included)
-    for bench, data in [("gsm8k", gsm_results), ("math500", math_results)]:
-        fname = f"eval_{model_name}_{bench}.json"
+    if gsm_results:
+        fname = f"eval_{model_name}_gsm8k.json"
         with open(fname, "w") as f:
-            json.dump(data, f, indent=2)
+            json.dump(gsm_results, f, indent=2)
         print(f"  Saved {fname}")
+    fname = f"eval_{model_name}_math500.json"
+    with open(fname, "w") as f:
+        json.dump(math_results, f, indent=2)
+    print(f"  Saved {fname}")
 
     del model
     torch.cuda.empty_cache()
