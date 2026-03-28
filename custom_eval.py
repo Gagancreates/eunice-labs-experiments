@@ -5,6 +5,7 @@
 
 import re
 import json
+import time
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
@@ -110,13 +111,37 @@ def run_inference(model, tokenizer, problem, max_new_tokens=MAX_NEW_TOKENS_DEFAU
 # ── Eval loop ──────────────────────────────────────────────────────────────────
 def evaluate(model, tokenizer, problems, label):
     results = []
-    for item in tqdm(problems, desc=label):
+    correct_count = 0
+    total_time = 0.0
+
+    pbar = tqdm(problems, desc=label)
+    for item in pbar:
         level = item.get("level")
         max_tok = MAX_NEW_TOKENS_HARD if level in [3, 4, 5] else MAX_NEW_TOKENS_DEFAULT
+
+        t0 = time.time()
         decoded = run_inference(model, tokenizer, item["problem"], max_new_tokens=max_tok)
+        elapsed = time.time() - t0
+        total_time += elapsed
+
         think_tokens = count_think_tokens(decoded, tokenizer)
         pred = extract_answer(decoded)
         correct = is_correct(pred, item["answer"])
+        if correct:
+            correct_count += 1
+
+        n = len(results) + 1
+        avg_time = total_time / n
+        running_acc = round(100 * correct_count / n, 1)
+        eta_sec = avg_time * (len(problems) - n)
+        eta_min = round(eta_sec / 60, 1)
+
+        pbar.set_postfix({
+            "acc": f"{running_acc}%",
+            "avg_s": f"{avg_time:.1f}s",
+            "ETA": f"{eta_min}m",
+        })
+
         results.append({
             "problem": item["problem"],
             "difficulty": item.get("level", None),
@@ -126,7 +151,12 @@ def evaluate(model, tokenizer, problems, label):
             "ground_truth": item["answer"],
             "correct": correct,
             "has_think_tag": has_think_tag(decoded),
+            "inference_time_s": round(elapsed, 2),
         })
+
+    total_min = round(total_time / 60, 1)
+    print(f"  {label} done — {correct_count}/{len(problems)} correct | "
+          f"total time: {total_min}m | avg: {round(total_time/len(problems),1)}s/sample")
     return results
 
 
