@@ -12,6 +12,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 from tqdm import tqdm
+from math_verify import verify, parse as math_parse
 
 SYSTEM_PROMPT = (
     "You are a math reasoning assistant. "
@@ -79,6 +80,13 @@ def normalize(ans):
 def is_correct(pred, gold):
     if pred is None or gold is None:
         return False
+    # Try math_verify first (handles LaTeX, fractions, symbolic equivalence)
+    try:
+        if verify(math_parse(gold), math_parse(pred)):
+            return True
+    except Exception:
+        pass
+    # Fallback: normalized string match
     return normalize(pred) == normalize(gold)
 
 
@@ -152,8 +160,8 @@ print("Loading datasets...")
 gsm8k_raw = load_dataset("openai/gsm8k", "main", split="test")
 math500_raw = load_dataset("HuggingFaceH4/MATH-500", split="test")
 
-gsm8k = [{"problem": x["question"], "answer": x["answer"].split("####")[-1].strip()} for x in gsm8k_raw]
-math500 = [{"problem": x["problem"], "answer": x["answer"], "level": x["level"]} for x in math500_raw]
+gsm8k = [{"problem": x["question"], "answer": x["answer"].split("####")[-1].strip()} for x in gsm8k_raw][:10]
+math500 = [{"problem": x["problem"], "answer": x["answer"], "level": x["level"]} for x in math500_raw][:10]
 
 print(f"GSM8K: {len(gsm8k)} problems")
 print(f"MATH-500: {len(math500)} problems")
