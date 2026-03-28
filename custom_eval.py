@@ -17,7 +17,8 @@ SYSTEM_PROMPT = (
     "then provide a clean final answer."
 )
 
-MAX_NEW_TOKENS = 8192
+MAX_NEW_TOKENS_DEFAULT = 4096   # GSM8K + MATH L1/L2
+MAX_NEW_TOKENS_HARD    = 8192   # MATH L3/L4/L5
 DEVICE = "cuda"
 
 # ── Token counting ─────────────────────────────────────────────────────────────
@@ -93,13 +94,13 @@ def is_correct(pred, gold):
 
 
 # ── Inference ──────────────────────────────────────────────────────────────────
-def run_inference(model, tokenizer, problem):
+def run_inference(model, tokenizer, problem, max_new_tokens=MAX_NEW_TOKENS_DEFAULT):
     prompt = f"{SYSTEM_PROMPT}<|User|>{problem}<|Assistant|>"
     inputs = tokenizer(prompt, return_tensors="pt").to(DEVICE)
     with torch.no_grad():
         out = model.generate(
             **inputs,
-            max_new_tokens=MAX_NEW_TOKENS,
+            max_new_tokens=max_new_tokens,
             do_sample=False,
             repetition_penalty=1.1,
         )
@@ -110,7 +111,9 @@ def run_inference(model, tokenizer, problem):
 def evaluate(model, tokenizer, problems, label):
     results = []
     for item in tqdm(problems, desc=label):
-        decoded = run_inference(model, tokenizer, item["problem"])
+        level = item.get("level")
+        max_tok = MAX_NEW_TOKENS_HARD if level in [3, 4, 5] else MAX_NEW_TOKENS_DEFAULT
+        decoded = run_inference(model, tokenizer, item["problem"], max_new_tokens=max_tok)
         think_tokens = count_think_tokens(decoded, tokenizer)
         pred = extract_answer(decoded)
         correct = is_correct(pred, item["answer"])
