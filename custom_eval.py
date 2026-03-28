@@ -1,10 +1,7 @@
-# custom_eval.py — ARIA paper evaluation
-# Measures think token reduction + accuracy on GSM8K and MATH-500
+# custom_eval.py — ARIA paper evaluation (final)
+# GSM8K: 200 samples | MATH-500: all 500 (5 levels)
+# Outputs: accuracy, avg think tokens, RES score, per-level table, case studies
 # Run: python custom_eval.py
-#
-# Think token counting rule (documented in paper):
-#   All tokens from first <think> (or start of generation if absent)
-#   to LAST </think>. Applied identically to ARIA and base model.
 
 import re
 import json
@@ -25,29 +22,28 @@ DEVICE = "cuda"
 
 # ── Token counting ─────────────────────────────────────────────────────────────
 def count_think_tokens(text, tokenizer):
-    """
-    Count tokens between first <think> (or start of generation)
-    and LAST </think>. Returns 0 if no </think> found (truncated).
-    """
+    """Tokens from first <think> (or start of generation) to LAST </think>."""
     if "<|Assistant|>" in text:
         text = text.split("<|Assistant|>")[-1]
-
     last_close = text.rfind("</think>")
     if last_close == -1:
-        return 0  # truncated — don't count
-
-    # Find start: first <think> if present, else start of text
+        return 0
     first_open = text.find("<think>")
     if first_open != -1:
         think_content = text[first_open + len("<think>"):last_close]
     else:
         think_content = text[:last_close]
-
     return len(tokenizer.encode(think_content))
+
+def has_think_tag(text):
+    if "<|Assistant|>" in text:
+        text = text.split("<|Assistant|>")[-1]
+    return "<think>" in text
 
 
 # ── Answer extraction ──────────────────────────────────────────────────────────
 def extract_boxed(text):
+    """Balanced brace matcher — handles nested braces e.g. \\boxed{\\frac{1}{2}}."""
     idx = text.rfind("\\boxed{")
     if idx == -1:
         return None
@@ -62,47 +58,37 @@ def extract_boxed(text):
             depth -= 1
     return None
 
-
 def extract_answer(text):
     if "<|Assistant|>" in text:
         text = text.split("<|Assistant|>")[-1]
-    # Remove think block
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    # Also remove content before last </think>
     last_close = text.rfind("</think>")
     if last_close != -1:
         text = text[last_close + len("</think>"):]
-    # Boxed answer (balanced brace matcher handles nested braces e.g. \frac{1}{2})
     boxed = extract_boxed(text)
     if boxed:
         return boxed
-    # "the answer is X"
     m = re.search(r"answer\s+is\s+\$?([0-9][\d\s,\.]*)", text, re.IGNORECASE)
     if m:
         return m.group(1).strip().rstrip(".")
-    # Last number in text
     nums = re.findall(r"\$?-?[\d,]+\.?\d*", text)
     if nums:
         return nums[-1].replace(",", "").replace("$", "")
     return None
-
 
 def normalize(ans):
     if ans is None:
         return None
     return ans.replace(",", "").replace("$", "").replace(" ", "").strip().lower()
 
-
 def is_correct(pred, gold):
     if pred is None or gold is None:
         return False
-    # Try math_verify first (handles LaTeX, fractions, symbolic equivalence)
     try:
         if verify(math_parse(gold), math_parse(pred)):
             return True
     except Exception:
         pass
-    # Fallback: normalized string match
     return normalize(pred) == normalize(gold)
 
 
@@ -114,8 +100,7 @@ def run_inference(model, tokenizer, problem):
         out = model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
-            do_sample=False,         # greedy decoding
-            temperature=1.0,
+            do_sample=False,
             repetition_penalty=1.1,
         )
     return tokenizer.decode(out[0], skip_special_tokens=False)
@@ -123,10 +108,6 @@ def run_inference(model, tokenizer, problem):
 
 # ── Eval loop ──────────────────────────────────────────────────────────────────
 def evaluate(model, tokenizer, problems, label):
-    """
-    problems: list of dicts with keys: problem, answer, level (optional)
-    Returns list of result dicts.
-    """
     results = []
     for item in tqdm(problems, desc=label):
         decoded = run_inference(model, tokenizer, item["problem"])
@@ -134,13 +115,14 @@ def evaluate(model, tokenizer, problems, label):
         pred = extract_answer(decoded)
         correct = is_correct(pred, item["answer"])
         results.append({
-            "problem": item["problem"][:100],
-            "gold": item["answer"],
-            "pred": pred,
-            "correct": correct,
+            "problem": item["problem"],
+            "difficulty": item.get("level", None),
+            "model_output": decoded,
             "think_tokens": think_tokens,
-            "level": item.get("level", None),
-            "raw_output": decoded,
+            "answer_extracted": pred,
+            "ground_truth": item["answer"],
+            "correct": correct,
+            "has_think_tag": has_think_tag(decoded),
         })
     return results
 
@@ -150,23 +132,30 @@ def summarize(results, by_level=False):
         return {}
     acc = sum(r["correct"] for r in results) / len(results)
     think = [r["think_tokens"] for r in results if r["think_tokens"] > 0]
+    mean_tokens = round(sum(think) / len(think), 1) if think else 0
+    res_score = round(acc * 100 / mean_tokens * 1000, 2) if mean_tokens > 0 else 0
+    no_think = sum(1 for r in results if not r["has_think_tag"])
     summary = {
         "accuracy": round(acc * 100, 1),
-        "mean_think_tokens": round(sum(think) / len(think), 1) if think else 0,
-        "samples_with_think": len(think),
+        "mean_think_tokens": mean_tokens,
+        "res_score": res_score,
+        "missing_think_tag": no_think,
         "total": len(results),
     }
     if by_level:
-        levels = sorted(set(r["level"] for r in results if r["level"]))
+        levels = sorted(set(r["difficulty"] for r in results if r["difficulty"]))
         summary["by_level"] = {}
         for lvl in levels:
-            lvl_results = [r for r in results if r["level"] == lvl]
-            lvl_acc = sum(r["correct"] for r in lvl_results) / len(lvl_results)
-            lvl_think = [r["think_tokens"] for r in lvl_results if r["think_tokens"] > 0]
+            lvl_res = [r for r in results if r["difficulty"] == lvl]
+            lvl_acc = sum(r["correct"] for r in lvl_res) / len(lvl_res)
+            lvl_think = [r["think_tokens"] for r in lvl_res if r["think_tokens"] > 0]
+            lvl_mean = round(sum(lvl_think) / len(lvl_think), 1) if lvl_think else 0
+            lvl_res_score = round(lvl_acc * 100 / lvl_mean * 1000, 2) if lvl_mean > 0 else 0
             summary["by_level"][str(lvl)] = {
                 "accuracy": round(lvl_acc * 100, 1),
-                "mean_think_tokens": round(sum(lvl_think) / len(lvl_think), 1) if lvl_think else 0,
-                "n": len(lvl_results),
+                "mean_think_tokens": lvl_mean,
+                "res_score": lvl_res_score,
+                "n": len(lvl_res),
             }
     return summary
 
@@ -176,27 +165,28 @@ print("Loading datasets...")
 gsm8k_raw = load_dataset("openai/gsm8k", "main", split="test")
 math500_raw = load_dataset("HuggingFaceH4/MATH-500", split="test")
 
-gsm8k = [{"problem": x["question"], "answer": x["answer"].split("####")[-1].strip()} for x in gsm8k_raw][:10]
-math500 = [{"problem": x["problem"], "answer": x["answer"], "level": x["level"]} for x in math500_raw][:10]
+gsm8k = [{"problem": x["question"], "answer": x["answer"].split("####")[-1].strip()}
+         for x in gsm8k_raw][:200]
+math500 = [{"problem": x["problem"], "answer": x["answer"], "level": x["level"]}
+           for x in math500_raw]
 
 print(f"GSM8K: {len(gsm8k)} problems")
 print(f"MATH-500: {len(math500)} problems")
 
-# ── Load models ────────────────────────────────────────────────────────────────
+
+# ── Run eval ───────────────────────────────────────────────────────────────────
 all_results = {}
 
 for model_name, model_path in [
     ("base", "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"),
     ("aria", "./aria-merged"),
 ]:
-    print(f"\n{'='*50}")
+    print(f"\n{'='*55}")
     print(f"Evaluating: {model_name}")
-    print(f"{'='*50}")
+    print(f"{'='*55}")
 
     model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        dtype=torch.bfloat16,
-        device_map="auto",
+        model_path, dtype=torch.bfloat16, device_map="auto"
     )
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model.eval()
@@ -209,85 +199,161 @@ for model_name, model_path in [
         "math500": {"results": math_results, "summary": summarize(math_results, by_level=True)},
     }
 
-    # Free VRAM before loading next model
+    # Save full per-model results (raw outputs included)
+    for bench, data in [("gsm8k", gsm_results), ("math500", math_results)]:
+        fname = f"eval_{model_name}_{bench}.json"
+        with open(fname, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"  Saved {fname}")
+
     del model
     torch.cuda.empty_cache()
 
-# ── Save results ───────────────────────────────────────────────────────────────
+
+# ── Save compact summary ───────────────────────────────────────────────────────
+compact = {}
+for model_name, data in all_results.items():
+    compact[model_name] = {
+        "gsm8k": data["gsm8k"]["summary"],
+        "math500": data["math500"]["summary"],
+    }
 with open("eval_results_final.json", "w") as f:
-    # Save without raw outputs to keep file small
-    compact = {}
-    for model_name, data in all_results.items():
-        compact[model_name] = {
-            "gsm8k": data["gsm8k"]["summary"],
-            "math500": data["math500"]["summary"],
-        }
     json.dump(compact, f, indent=2)
 
-# Also save full results (with raw outputs) for debugging
-with open("eval_results_full.json", "w") as f:
-    for model_name, data in all_results.items():
-        for bench in ["gsm8k", "math500"]:
-            for r in data[bench]["results"]:
-                r.pop("raw_output", None)  # too large
-    json.dump(all_results, f, indent=2)
 
-# ── Print paper table ──────────────────────────────────────────────────────────
-print("\n" + "="*60)
-print("RESULTS SUMMARY")
-print("="*60)
+# ── Print main results table ───────────────────────────────────────────────────
+print("\n" + "="*75)
+print("MAIN RESULTS TABLE")
+print("="*75)
+print(f"{'Benchmark':<12} {'Model':<8} {'Accuracy':>10} {'Avg Tokens':>12} {'RES Score':>12}")
+print("-"*55)
+for bench in ["gsm8k", "math500"]:
+    for m in ["base", "aria"]:
+        s = compact[m][bench]
+        print(f"{bench.upper():<12} {m:<8} {str(s['accuracy'])+'%':>10} "
+              f"{s['mean_think_tokens']:>12} {s['res_score']:>12}")
+    print()
 
-print("\nGSM8K:")
-print(f"{'Model':<10} {'Accuracy':>10} {'Mean Think Tokens':>20}")
-print("-" * 45)
-for m in ["base", "aria"]:
-    s = compact[m]["gsm8k"]
-    print(f"{m:<10} {str(s['accuracy'])+'%':>10} {s['mean_think_tokens']:>20}")
 
-print("\nMATH-500 (per level):")
-header = f"{'Level':<8} {'Base Acc':>10} {'ARIA Acc':>10} {'Base Tokens':>13} {'ARIA Tokens':>13} {'Reduction':>10}"
-print(header)
-print("-" * 70)
+# ── Print MATH-500 per-level table ─────────────────────────────────────────────
+print("="*90)
+print("MATH-500 PER-LEVEL BREAKDOWN")
+print("="*90)
+print(f"{'Level':<8} {'Base Acc':>10} {'ARIA Acc':>10} {'Base Tok':>10} {'ARIA Tok':>10} "
+      f"{'Reduction':>10} {'Base RES':>10} {'ARIA RES':>10}")
+print("-"*90)
 base_lvl = compact["base"]["math500"].get("by_level", {})
 aria_lvl = compact["aria"]["math500"].get("by_level", {})
 for lvl in sorted(base_lvl.keys()):
     b = base_lvl[lvl]
     a = aria_lvl.get(lvl, {})
-    reduction = round(b["mean_think_tokens"] / a["mean_think_tokens"], 2) if a.get("mean_think_tokens") else "—"
+    reduction = (round(b["mean_think_tokens"] / a["mean_think_tokens"], 2)
+                 if a.get("mean_think_tokens") else "—")
     print(f"{lvl:<8} {str(b['accuracy'])+'%':>10} {str(a.get('accuracy','—'))+'%':>10} "
-          f"{b['mean_think_tokens']:>13} {a.get('mean_think_tokens','—'):>13} {str(reduction)+'x':>10}")
+          f"{b['mean_think_tokens']:>10} {a.get('mean_think_tokens','—'):>10} "
+          f"{str(reduction)+'x':>10} {b['res_score']:>10} {a.get('res_score','—'):>10}")
 
-print("\nSaved to eval_results_final.json and eval_results_full.json")
+
+# ── Missing <think> tag analysis ──────────────────────────────────────────────
+print("\n" + "="*75)
+print("MISSING <think> TAG ANALYSIS")
+print("="*75)
+for m in ["base", "aria"]:
+    for bench in ["gsm8k", "math500"]:
+        s = compact[m][bench]
+        total = s["total"]
+        missing = s["missing_think_tag"]
+        pct = round(100 * missing / total, 1)
+        print(f"  {m.upper()} / {bench.upper()}: {missing}/{total} missing <think> tag ({pct}%)")
+
 
 # ── Bad label detection ────────────────────────────────────────────────────────
-# Flag cases where both models predict the same answer but are marked wrong.
-# These are likely incorrect gold labels in the dataset.
-print("\n" + "="*60)
+print("\n" + "="*75)
 print("POTENTIAL BAD LABELS (both models agree, both marked wrong)")
-print("="*60)
+print("="*75)
+all_bad = []
 for bench in ["gsm8k", "math500"]:
     base_res = all_results["base"][bench]["results"]
     aria_res = all_results["aria"][bench]["results"]
-    bad = []
     for b, a in zip(base_res, aria_res):
-        if not b["correct"] and not a["correct"] and b["pred"] is not None and a["pred"] is not None:
-            if normalize(b["pred"]) == normalize(a["pred"]):
-                bad.append({
-                    "bench": bench,
-                    "problem": b["problem"],
-                    "gold": b["gold"],
-                    "both_predicted": b["pred"],
-                    "level": b.get("level"),
-                })
-    if bad:
-        print(f"\n{bench.upper()} — {len(bad)} suspect label(s):")
-        for x in bad:
-            lvl = f" (L{x['level']})" if x.get("level") else ""
-            print(f"  [{bench}{lvl}] gold={x['gold']} | both predicted={x['both_predicted']}")
-            print(f"    problem: {x['problem'][:80]}...")
-    else:
-        print(f"\n{bench.upper()} — no suspect labels found")
-
+        if (not b["correct"] and not a["correct"]
+                and b["answer_extracted"] and a["answer_extracted"]
+                and normalize(b["answer_extracted"]) == normalize(a["answer_extracted"])):
+            all_bad.append({
+                "bench": bench,
+                "problem": b["problem"][:120],
+                "gold": b["ground_truth"],
+                "both_predicted": b["answer_extracted"],
+                "level": b.get("difficulty"),
+            })
+if all_bad:
+    print(f"\n{len(all_bad)} suspect label(s):")
+    for x in all_bad:
+        lvl = f" (L{x['level']})" if x.get("level") else ""
+        print(f"  [{x['bench'].upper()}{lvl}] gold={x['gold']} | both predicted={x['both_predicted']}")
+        print(f"    {x['problem'][:80]}...")
+else:
+    print("\nNo suspect labels found.")
 with open("bad_labels.json", "w") as f:
-    json.dump(bad, f, indent=2)
-print("\nSuspect labels saved to bad_labels.json")
+    json.dump(all_bad, f, indent=2)
+
+
+# ── Case studies ──────────────────────────────────────────────────────────────
+print("\n" + "="*75)
+print("CASE STUDIES")
+print("="*75)
+case_studies = {}
+
+aria_math = all_results["aria"]["math500"]["results"]
+base_math  = all_results["base"]["math500"]["results"]
+aria_gsm   = all_results["aria"]["gsm8k"]["results"]
+
+# Case 1: Easy problem, ARIA correct, fewest think tokens
+easy = [r for r in aria_math if r["correct"] and r["difficulty"] in [1, 2] and r["think_tokens"] > 0]
+if not easy:
+    easy = [r for r in aria_gsm if r["correct"] and r["think_tokens"] > 0]
+if easy:
+    case1 = min(easy, key=lambda r: r["think_tokens"])
+    case_studies["easy_short_think"] = case1
+    print(f"\n[Case 1] Easy + shortest think — {case1['think_tokens']} tokens (L{case1['difficulty']})")
+    print(f"  Problem: {case1['problem'][:100]}...")
+    print(f"  Gold: {case1['ground_truth']} | Predicted: {case1['answer_extracted']}")
+
+# Case 2: Hard problem, ARIA correct, most think tokens used
+hard = [r for r in aria_math if r["correct"] and r["difficulty"] in [4, 5] and r["think_tokens"] > 0]
+if hard:
+    case2 = max(hard, key=lambda r: r["think_tokens"])
+    case_studies["hard_deep_think"] = case2
+    print(f"\n[Case 2] Hard + deepest think — {case2['think_tokens']} tokens (L{case2['difficulty']})")
+    print(f"  Problem: {case2['problem'][:100]}...")
+    print(f"  Gold: {case2['ground_truth']} | Predicted: {case2['answer_extracted']}")
+
+# Case 3: Side-by-side — largest token gap, both models correct
+paired = [
+    (b, a) for b, a in zip(base_math, aria_math)
+    if b["correct"] and a["correct"] and b["think_tokens"] > 0 and a["think_tokens"] > 0
+]
+if paired:
+    b_best, a_best = max(paired, key=lambda x: x[0]["think_tokens"] - x[1]["think_tokens"])
+    case_studies["side_by_side"] = {
+        "base": b_best,
+        "aria": a_best,
+        "token_reduction": round(b_best["think_tokens"] / a_best["think_tokens"], 2),
+    }
+    print(f"\n[Case 3] Side-by-side — base {b_best['think_tokens']} tok → aria {a_best['think_tokens']} tok "
+          f"({round(b_best['think_tokens']/a_best['think_tokens'],2)}x reduction)")
+    print(f"  Problem: {b_best['problem'][:100]}...")
+
+with open("case_studies.json", "w") as f:
+    json.dump(case_studies, f, indent=2)
+
+print("\n" + "="*75)
+print("FILES SAVED")
+print("="*75)
+print("  eval_results_final.json   — compact summary (accuracy, tokens, RES)")
+print("  eval_base_gsm8k.json      — full base GSM8K results (raw outputs)")
+print("  eval_base_math500.json    — full base MATH-500 results (raw outputs)")
+print("  eval_aria_gsm8k.json      — full ARIA GSM8K results (raw outputs)")
+print("  eval_aria_math500.json    — full ARIA MATH-500 results (raw outputs)")
+print("  bad_labels.json           — suspect gold labels")
+print("  case_studies.json         — 3 case study examples")
