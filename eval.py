@@ -3,8 +3,10 @@
 
 import re
 import json
+import time
 from datasets import load_dataset
 from unsloth import FastLanguageModel
+from tqdm import tqdm
 
 model, tokenizer = FastLanguageModel.from_pretrained(
     "Eunice-Labs/aria-stage1",
@@ -20,8 +22,8 @@ medium = [x for x in ds if x["difficulty"] == "medium"][:30]
 results = {}
 for label, samples in [("easy", easy), ("medium", medium)]:
     think_lens = []
-    for i, s in enumerate(samples):
-        print(f"{label} {i+1}/30...", end="\r")
+    for s in tqdm(samples, desc=f"{label:6s}", unit="sample"):
+        t0 = time.time()
         prompt = s["text"].split("<|Assistant|>")[0] + "<|Assistant|>"
         inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
         out = model.generate(**inputs, max_new_tokens=1024, use_cache=False)
@@ -34,7 +36,7 @@ for label, samples in [("easy", easy), ("medium", medium)]:
         "max_think_tokens": max(think_lens),
         "samples_with_think": sum(1 for t in think_lens if t > 0),
     }
-    print(f"{label} done: mean={results[label]['mean_think_tokens']} tokens")
+    print(f"{label} done — mean think tokens: {results[label]['mean_think_tokens']}")
 
 print(json.dumps(results, indent=2))
 with open("eval_results.json", "w") as f:
