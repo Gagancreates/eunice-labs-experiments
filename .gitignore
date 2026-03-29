@@ -1,18 +1,55 @@
+# Python
 .venv/
 venv/
 ENV/
 __pycache__/
 *.py[cod]
 .ENV
+.env
 .env/
-day3_recap.md
+
+# Large data files
 aria_train.jsonl
 aria_lora_1.5b.zip
-whatwedd.md
 final_training_dataset.json
 parsed_6000.json
 compression_progress.json
 easy_medium.jsonl
 hard_with_replay.jsonl
-prepare_dataset.py
+
+# Notebooks
+6000_samples.ipynb
+compressed_reasoning.ipynb
+dataset_exploration.ipynb
+final_data_exploration.ipynb
+
+# Eval output files (stored on HF)
+aria-eval-results/
+*.json
+!push_dataset.py
+
+# Logs
+*.txt
+*.log
+
+# Media
+*.mp4
+*.zip
+image_snippets/
+
+# WandB
+stage-1-wandb/
+stage-2-wandb/
+
+# Scratch/test files
+test.py
+test_regex.py
+test_regex2.py
+check_bos.py
+2_sample_answer.txt
+
+# Old docs
+day3_recap.md
+whatwedd.md
 tasks.md
+prepare_dataset.py
