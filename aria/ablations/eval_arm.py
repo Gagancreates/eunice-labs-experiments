@@ -250,7 +250,7 @@ def summarize(results, by_level=False):
         "accuracy": round(acc * 100, 1),
         "mean_think_tokens": mean_tokens,
         "res_score": res_score,
-        "missing_think_tag": sum(1 for r in results if not r["has_think_tag"]),
+        "missing_think_tag": sum(1 for r in results if not r.get("has_think_tag", True)),
         "total": len(results),
     }
     if by_level:
