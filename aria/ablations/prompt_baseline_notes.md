@@ -1,6 +1,6 @@
 # Prompt Baseline (P1/P2) — Run Notes
-**Date started:** 2026-07-07
-**Status:** ⬜ not run
+**Date started:** 2026-07-08
+**Status:** 🟡 smoke tests in progress (Vast.ai RTX 3090, $0.177/hr, host 155385)
 
 ## What this tests
 Can instruction-only prompting of the base model reproduce ARIA's efficiency gains —
@@ -66,5 +66,26 @@ run's `summary_*.json` — report them verbatim in the paper appendix.
   the instruction changing answer-format compliance (check `missing_think_tag` and a few
   raw outputs before trusting accuracy).
 
+## Run log
+
+### 2026-07-08 — p1-smoke (base + concise prompt, 15 GSM8K, greedy)
+| Arm | Acc | Mean Think Tokens | RES |
+|-----|-----|-------------------|-----|
+| p1-smoke | 40.0% (6/15) | 120.1 | 333.1 |
+
+- The instruction **bites hard**: 120 tokens vs base's ~450 (3.74x fewer) — R1-Distill
+  does obey system-prompt brevity instructions.
+- But accuracy collapsed 76% → 40%. If real, this is the ideal ablation outcome:
+  *prompting trades accuracy for brevity; ARIA achieves brevity while gaining accuracy
+  (78.5% @ 203.7 tok, RES 385 vs prompt's 333).*
+- Pending verification before trusting it (n=15 is noisy, ±~25pp):
+  1. `base-smoke` — paper prompt on the *same 15 problems* (paired control; rules out
+     an unusually hard sample)
+  2. Manual inspection of the 9 incorrect outputs — real errors vs answer-extraction
+     failures (short outputs may change the final-answer format)
+
+### (next) base-smoke — base + paper prompt, same 15 problems
+- Result:
+
 ## Observations / issues
-- (fill in during the run)
+- Vast host's real HF download speed ~13MB/s (listed 1.2Gbps) — first model download ~20 min.
