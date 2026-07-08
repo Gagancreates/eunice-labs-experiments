@@ -119,5 +119,20 @@ buggy scorer (stage2_notes.md already suspected under-counting). Before the fina
 ablation table, re-score the published raw outputs:
 `python rescore.py --hub eval_base_gsm8k.json eval_aria_gsm8k.json eval_base_math500.json eval_aria_math500.json`
 
+### 2026-07-08 — rescored smokes with fixed scorer (verified on box)
+| Arm (same 15 GSM8K) | Acc | Mean Think Tokens | RES |
+|-----|-----|-------------------|-----|
+| base-smoke (paper prompt) | 80.0% (12/15) | 388.2 | 206.1 |
+| p1-smoke (concise prompt) | 73.3% (11/15) | 120.1 | 610.6 |
+
+- Bold-regex regression fixed (was grabbing numbered headings like `**2.**`).
+- Corrected picture: concise prompt costs ~1 problem (73.3% vs 80.0%) for a 3.2x token
+  cut on this sample. RES 610 would *beat* ARIA's 385 — the prompt baseline is a live
+  threat to the paper's framing. n=15 → full P1 run launched to settle it.
+- Note: the old scorer also under-scored the base model here (+1 flip). Published
+  base/ARIA numbers must be rescored before the final table.
+
+### 2026-07-08 — P1 full run launched (200 GSM8K + 243 MATH-500, ~3–4h)
+
 ## Observations / issues
 - Vast host's real HF download speed ~13MB/s (listed 1.2Gbps) — first model download ~20 min.
