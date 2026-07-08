@@ -270,7 +270,7 @@ def summarize(results, by_level=False):
 
 
 # ── Benchmarks (same subsets as ../custom_eval.py) ─────────────────────────────
-def load_benchmarks(gsm8k_n=200, math_per_level=50):
+def load_benchmarks(gsm8k_n=200, math_per_level=50, math_levels=None):
     gsm8k_raw = load_dataset("openai/gsm8k", "main", split="test")
     math500_raw = load_dataset("HuggingFaceH4/MATH-500", split="test")
 
@@ -282,6 +282,8 @@ def load_benchmarks(gsm8k_n=200, math_per_level=50):
         per_level[x["level"]].append(x)
     math500 = []
     for lvl in sorted(per_level.keys()):
+        if math_levels and lvl not in math_levels:
+            continue
         for x in per_level[lvl][:math_per_level]:
             math500.append({"problem": x["problem"], "answer": x["answer"], "level": x["level"]})
     return gsm8k, math500
@@ -318,6 +320,8 @@ def main():
                     help="system prompt; trained arms use 'paper' (the eval default)")
     ap.add_argument("--gsm8k-n", type=int, default=200)
     ap.add_argument("--math-per-level", type=int, default=50)
+    ap.add_argument("--math-levels", default=None,
+                    help="comma-separated levels to eval, e.g. '5' (default: all)")
     ap.add_argument("--skip-gsm8k", action="store_true")
     ap.add_argument("--skip-math", action="store_true")
     ap.add_argument("--no-push", action="store_true")
@@ -327,7 +331,8 @@ def main():
     system_prompt = PROMPT_PRESETS[args.prompt_preset]
 
     print(f"Arm: {args.label} | model: {args.model} | prompt preset: {args.prompt_preset}")
-    gsm8k, math500 = load_benchmarks(args.gsm8k_n, args.math_per_level)
+    math_levels = [int(x) for x in args.math_levels.split(",")] if args.math_levels else None
+    gsm8k, math500 = load_benchmarks(args.gsm8k_n, args.math_per_level, math_levels)
     print(f"GSM8K: {len(gsm8k)} problems | MATH-500: {len(math500)} problems")
 
     model = AutoModelForCausalLM.from_pretrained(
