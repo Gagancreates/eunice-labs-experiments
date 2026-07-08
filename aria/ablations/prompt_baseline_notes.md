@@ -171,6 +171,37 @@ Consequences for the paper:
 - Revision must reframe: ARIA = ~2x token cut for a small accuracy cost, defended by RES —
   not an accuracy improvement.
 
+### 2026-07-08 — ✅ P1 COMPLETE (200 GSM8K + 243 MATH-500, fixed grader)
+| Arm | Bench | Acc | Tokens | RES |
+|-----|-------|-----|--------|-----|
+| base (rescored) | GSM8K | 87.5% | 467.5 | 187.2 |
+| ARIA (rescored) | GSM8K | 85.5% | 203.7 | 419.7 |
+| **p1-concise** | GSM8K | **86.5%** | **138.9** | **622.8** |
+| base (rescored) | MATH-500 | 78.2% | 1552.8 | 50.4 |
+| ARIA (rescored) | MATH-500 | 73.3% | 847.5 | 86.4 |
+| **p1-concise** | MATH-500 | **74.5%** | **703.3** | **105.9** |
+
+MATH-500 per level — accuracy (tokens) [reduction vs base]:
+| Level | Base (rescored) | ARIA (rescored) | p1-concise |
+|-------|------|------|------------|
+| L1 | 86.0 (790) | 83.7 (244) [3.23x] | 83.7 (220) [3.59x] |
+| L2 | 82.0 (981) | 80.0 (408) [2.41x] | 84.0 (315) [3.11x] |
+| L3 | 82.0 (1299) | 74.0 (694) [1.87x] | 74.0 (580) [2.24x] |
+| L4 | 74.0 (1585) | 66.0 (864) [1.83x] | 74.0 (698) [2.27x] |
+| L5 | 68.0 (3045) | 64.0 (2036) [1.50x] | 58.0 (1713) [1.78x] |
+
+**Findings:**
+1. **The prompt baseline matches or beats ARIA on every level except L5**, at fewer
+   tokens, with zero training. Overall it wins both benchmarks on accuracy AND RES.
+2. **The prompt also exhibits the "adaptive gradient"** (3.59x → 1.78x across levels).
+   The gradient is the base model's natural difficulty-scaling under a brevity
+   instruction — not something learned from difficulty-graded training data. This
+   independently confirms the training-data finding (ARIA never saw hard traces).
+3. **ARIA's sole surviving edge: L5 robustness** — prompt loses 10pp vs base on the
+   hardest problems (68→58) while ARIA loses only 4pp (68→64). Caveat: 6pp = 3/50
+   problems, within noise. Needs confirmation (larger L5 sample or L5-focused eval)
+   before it can carry the paper.
+
 ### 2026-07-08 — candidate reframing for the revision (agreed in discussion)
 ARIA never trained on hard traces (3,993 easy+medium only), so the paper's mechanism
 ("hard traces kept long teach depth-preservation") is impossible. The honest — and more
