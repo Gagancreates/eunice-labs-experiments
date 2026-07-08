@@ -211,5 +211,21 @@ token allocation emerges from what the fine-tune leaves intact on out-of-distrib
 direct test of this claim; f0-graded (full 5,993 mix on A100) tests the paper's original
 mechanism as a comparison point.
 
+## NEXT UP (planned 2026-07-10)
+The L5 tiebreaker — is ARIA's only surviving edge (L5: 64% vs prompt 58%, n=50, = 3
+problems) real? Run all 134 MATH-500 L5 problems on both arms (Vast 3090, ~$0.80, ~3.5h):
+```bash
+nohup bash -c '
+python eval_arm.py --model Eunice-Labs/aria-7b-merged \
+  --label aria-l5full --skip-gsm8k --math-levels 5 --math-per-level 200 && \
+python eval_arm.py --model deepseek-ai/DeepSeek-R1-Distill-Qwen-7B \
+  --label p1-l5full --prompt-preset concise --skip-gsm8k --math-levels 5 --math-per-level 200
+' > l5.log 2>&1 &
+```
+- Edge holds (~5+pp) → run p2-adaptive on L5 (does calibrated prompting close it?);
+  story: "SFT preserves hard-problem accuracy that prompting sacrifices."
+- Edge gone → prompting dominates; write revision as cautionary/baseline result.
+Then: draft revised results + ablation sections from this file.
+
 ## Observations / issues
 - Vast host's real HF download speed ~13MB/s (listed 1.2Gbps) — first model download ~20 min.
