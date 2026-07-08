@@ -134,5 +134,30 @@ ablation table, re-score the published raw outputs:
 
 ### 2026-07-08 — P1 full run launched (200 GSM8K + 243 MATH-500, ~3–4h)
 
+### 2026-07-08 — 🚨 published numbers rescored with fixed scorer (raw HF outputs)
+| | GSM8K Acc | Tok | RES | MATH-500 Acc | Tok | RES |
+|---|---|---|---|---|---|---|
+| base (publ. → corrected) | 76.0 → **87.5** | 467.5 | 187.2 | 77.0 → **78.2** | 1552.8 | 50.4 |
+| ARIA (publ. → corrected) | 78.5 → **85.5** | 203.7 | 419.7 | 72.8 → **73.3** | 847.5 | 86.4 |
+
+MATH-500 per level, corrected accuracy (tokens unchanged):
+| Level | Base | ARIA | Δ |
+|-------|------|------|---|
+| L1 | 86.0 | 83.7 | −2.3 |
+| L2 | 82.0 | 80.0 | −2.0 |
+| L3 | 82.0 | 74.0 | −8.0 |
+| L4 | 74.0 | 66.0 | −8.0 |
+| L5 | 68.0 | 64.0 | −4.0 |
+
+Consequences for the paper:
+- **The "+2.5% GSM8K accuracy" headline was a grading artifact** (buggy scorer hit base
+  harder: 23 flips vs ARIA's 14, almost all `\$…` money answers). Corrected: ARIA −2.0pp.
+- **"L1 accuracy perfectly preserved" is gone too**: base L1 corrects to 86.0 vs ARIA 83.7.
+- Token reductions, the adaptive gradient, and RES dominance (420 vs 187; 86 vs 50) all stand.
+- Corrected base GSM8K (87.5%) finally matches the expected ~86–89% for R1-Distill-7B
+  (stage1_notes consultation) — the published 76% was depressed by the scorer.
+- Revision must reframe: ARIA = ~2x token cut for a small accuracy cost, defended by RES —
+  not an accuracy improvement.
+
 ## Observations / issues
 - Vast host's real HF download speed ~13MB/s (listed 1.2Gbps) — first model download ~20 min.
