@@ -159,5 +159,14 @@ Consequences for the paper:
 - Revision must reframe: ARIA = ~2x token cut for a small accuracy cost, defended by RES —
   not an accuracy improvement.
 
+### 2026-07-08 — candidate reframing for the revision (agreed in discussion)
+ARIA never trained on hard traces (3,993 easy+medium only), so the paper's mechanism
+("hard traces kept long teach depth-preservation") is impossible. The honest — and more
+interesting — claim: *train on compressed easy/medium only, and difficulty-adaptive
+token allocation emerges from what the fine-tune leaves intact on out-of-distribution
+(hard) problems.* The gradient is real; its explanation changes. s2-shuffled is the
+direct test of this claim; f0-graded (full 5,993 mix on A100) tests the paper's original
+mechanism as a comparison point.
+
 ## Observations / issues
 - Vast host's real HF download speed ~13MB/s (listed 1.2Gbps) — first model download ~20 min.
