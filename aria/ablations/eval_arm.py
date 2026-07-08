@@ -114,13 +114,14 @@ def extract_answer(text):
     boxed = extract_boxed(text)
     if boxed:
         return boxed
-    # bolded final answer, e.g. "Kylar needs to pay **\$64** for the 16 glasses."
-    bolds = re.findall(r"\*\*\s*\\?\$?\s*(-?[\d,]+\.?\d*)\s*\*\*", text)
-    if bolds:
-        return bolds[-1]
     m = re.search(r"answer\s+is\s+\$?([0-9][\d\s,\.]*)", text, re.IGNORECASE)
     if m:
         return m.group(1).strip().rstrip(".")
+    # bolded final answer, e.g. "pay **\$64** for..." — but NOT numbered headings
+    # like "**2.**": require the number not be followed by a bare period
+    bolds = re.findall(r"\*\*\s*\\?\$?\s*(-?[\d,]+(?:\.\d+)?)\s*\*\*", text)
+    if bolds:
+        return bolds[-1]
     nums = re.findall(r"\$?-?[\d,]+\.?\d*", text)
     if nums:
         return nums[-1].replace(",", "").replace("$", "")
