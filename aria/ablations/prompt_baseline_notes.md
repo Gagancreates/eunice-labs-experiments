@@ -84,8 +84,40 @@ run's `summary_*.json` — report them verbatim in the paper appendix.
   2. Manual inspection of the 9 incorrect outputs — real errors vs answer-extraction
      failures (short outputs may change the final-answer format)
 
-### (next) base-smoke — base + paper prompt, same 15 problems
-- Result:
+### 2026-07-08 — base-smoke (base + paper prompt, same 15 problems)
+| Arm | Acc | Mean Think Tokens | RES |
+|-----|-----|-------------------|-----|
+| base-smoke | 73.3% (11/15) | 388.2 | 188.9 |
+
+- Matches the published full-run base numbers (76.0% @ 449.5) → the 15-problem sample is
+  representative, and the harness is consistent with the paper eval.
+- **Paired result on identical problems: concise prompt 40.0% @ 120.1 vs paper prompt
+  73.3% @ 388.2.** The brevity instruction alone costs ~33 accuracy points for a 3.2x
+  token cut. ARIA gets a similar cut (2.2x) while *gaining* accuracy.
+- Remaining check: inspect p1-smoke's 9 wrong outputs for extraction artifacts before
+  treating the accuracy collapse as real.
+
+### 2026-07-08 — ⚠️ scorer bug found: p1-smoke's accuracy collapse was mostly fake
+Manual inspection of p1-smoke's 9 "wrong" answers: **5 were correct but mis-scored.**
+- The concise prompt makes the model emit LaTeX currency inside the box —
+  `\boxed{\$18}`, `\boxed{\$70,\!000}` — and `normalize()` stripped `$` but not `\`,
+  so `\18 != 18`. (4 cases)
+- One answer was correct but un-boxed (`**\$64**`); the last-number fallback grabbed
+  "the 16 glasses" instead. (1 case)
+
+**Corrected paired smoke result: concise 11/15 (73.3%) @ 120.1 tok vs paper prompt
+11/15 (73.3%) @ 388.2 tok.** On this sample, prompting matches base accuracy at 3.2x
+fewer tokens — i.e. the prompt baseline may genuinely rival ARIA. P1 full run is now
+*essential*, with the fixed scorer.
+
+Fixes (in `eval_arm.py`, mirrored in `rescore.py` which re-scores saved outputs without
+GPU): normalize strips `\$ \! \% ** %`; extraction tries bolded final answers before
+the last-number fallback; math_verify also tried on the de-noised prediction.
+
+**Consequence for the paper:** the published base/ARIA numbers were produced with the
+buggy scorer (stage2_notes.md already suspected under-counting). Before the final
+ablation table, re-score the published raw outputs:
+`python rescore.py --hub eval_base_gsm8k.json eval_aria_gsm8k.json eval_base_math500.json eval_aria_math500.json`
 
 ## Observations / issues
 - Vast host's real HF download speed ~13MB/s (listed 1.2Gbps) — first model download ~20 min.

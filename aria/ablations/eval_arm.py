@@ -114,6 +114,10 @@ def extract_answer(text):
     boxed = extract_boxed(text)
     if boxed:
         return boxed
+    # bolded final answer, e.g. "Kylar needs to pay **\$64** for the 16 glasses."
+    bolds = re.findall(r"\*\*\s*\\?\$?\s*(-?[\d,]+\.?\d*)\s*\*\*", text)
+    if bolds:
+        return bolds[-1]
     m = re.search(r"answer\s+is\s+\$?([0-9][\d\s,\.]*)", text, re.IGNORECASE)
     if m:
         return m.group(1).strip().rstrip(".")
@@ -123,18 +127,23 @@ def extract_answer(text):
     return None
 
 def normalize(ans):
+    """Strip LaTeX/formatting noise so \\boxed{\\$70,\\!000} == 70000."""
     if ans is None:
         return None
-    return ans.replace(",", "").replace("$", "").replace(" ", "").strip().lower()
+    ans = ans.replace("\\!", "").replace("\\$", "").replace("\\%", "")
+    ans = ans.replace("**", "").replace("%", "")
+    return ans.replace(",", "").replace("$", "").replace(" ", "").strip().rstrip(".").lower()
 
 def is_correct(pred, gold):
     if pred is None or gold is None:
         return False
-    try:
-        if verify(math_parse(gold), math_parse(pred)):
-            return True
-    except Exception:
-        pass
+    # try math_verify on the raw and the de-noised prediction
+    for p in (pred, normalize(pred)):
+        try:
+            if verify(math_parse(gold), math_parse(p)):
+                return True
+        except Exception:
+            pass
     return normalize(pred) == normalize(gold)
 
 
