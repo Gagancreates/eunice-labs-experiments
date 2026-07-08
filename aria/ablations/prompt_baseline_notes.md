@@ -134,6 +134,18 @@ ablation table, re-score the published raw outputs:
 
 ### 2026-07-08 — P1 full run launched (200 GSM8K + 243 MATH-500, ~3–4h)
 
+### 2026-07-08 — P1 GSM8K complete (200 problems, fixed grader)
+| Arm | Acc | Mean Think Tokens | RES |
+|-----|-----|-------------------|-----|
+| base (paper prompt, rescored) | 87.5% | 467.5 | 187.2 |
+| ARIA (rescored) | 85.5% | 203.7 | 419.7 |
+| **p1-concise (base + brief prompt)** | **86.5%** (173/200) | **138.9** | **622.9** |
+
+**On GSM8K the prompt baseline strictly dominates ARIA**: accuracy within noise of both
+base and ARIA, 1.5x fewer tokens than ARIA, 3.4x fewer than base, zero training.
+ARIA's case now rests entirely on MATH-500 L3–L5 (in progress): does prompted brevity
+collapse on hard problems where ARIA degrades gracefully?
+
 ### 2026-07-08 — 🚨 published numbers rescored with fixed scorer (raw HF outputs)
 | | GSM8K Acc | Tok | RES | MATH-500 Acc | Tok | RES |
 |---|---|---|---|---|---|---|
