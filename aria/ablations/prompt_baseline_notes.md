@@ -229,3 +229,8 @@ Then: draft revised results + ablation sections from this file.
 
 ## Observations / issues
 - Vast host's real HF download speed ~13MB/s (listed 1.2Gbps) — first model download ~20 min.
+- **`Eunice-Labs/aria-7b-merged` is 4-bit (bnb fp4, 5.85GB), not bf16** — discovered
+  2026-07-09 when loading it required bitsandbytes. All ARIA evals (incl. the paper's,
+  if the local ./aria-merged was the same merge) run the fine-tune at 4-bit while base
+  runs bf16 — a small precision confound to disclose in the revision. L5-full uses the
+  released 4-bit artifact, so it's consistent with ARIA's published/rescored numbers.
